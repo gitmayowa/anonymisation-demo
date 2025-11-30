@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Anonymisation & Pseudonymisation — Interactive Demo</title>
+<style>
+    body {
+        margin: 0;
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: "Segoe UI", sans-serif;
+        padding: 40px;
+    }
+    h1, h2, h3 {
+        color: #f1f5f9;
+        margin-bottom: 12px;
+    }
+
+    /* MAIN GRID */
+    .container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 35px;
+        max-width: 1300px;
+        margin: 20px auto;
+    }
+
+    /* CARDS */
+    .box {
+        background: #1e293b;
+        padding: 30px;
+        border-radius: 14px;
+        box-shadow: 0 4px 25px rgba(0,0,0,0.35);
+    }
+
+    /* INPUT FIELDS */
+    label {
+        font-size: 14px;
+        color: #cbd5e1;
+        margin-bottom: 6px;
+        display: block;
+    }
+    input, textarea {
+        width: 100%;
+        padding: 14px;
+        margin: 12px 0 22px 0;
+        background: #0f172a;
+        border: 1px solid #334155;
+        border-radius: 10px;
+        color: #e2e8f0;
+        font-size: 15px;
+    }
+
+    /* BUTTONS */
+    button {
+        padding: 14px 18px;
+        margin: 8px 0;
+        border: none;
+        border-radius: 10px;
+        font-size: 16px;
+        cursor: pointer;
+        font-weight: bold;
+        width: 100%;
+    }
+    .blue { background: #3b82f6; color: white; }
+    .green { background: #22c55e; color: white; }
+    .grey { background: #475569; color: white; }
+
+    /* OUTPUT BOX */
+    pre {
+        background: #0f172a;
+        padding: 20px;
+        border-radius: 10px;
+        overflow-x: auto;
+        font-size: 14px;
+        border: 1px solid #334155;
+        margin-top: 12px;
+    }
+
+    /* PASS FIELD */
+    .pass-row {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 18px;
+    }
+    .pass-row input {
+        flex: 1;
+        margin: 0;
+    }
+    .pass-row button {
+        flex-shrink: 0;
+        width: 170px;
+    }
+</style>
+</head>
+
+<body>
+
+<h1>Anonymisation & Pseudonymisation — Interactive Demo</h1>
+<p>Enter sample personal data in the <b>Personal Identifiable Information (PII) Example</b> section, then choose <b>Anonymise</b> or <b>Pseudonymise</b>.</p>
+
+<div class="container">
+
+    <!-- LEFT PANEL -->
+    <div class="box">
+
+        <h2 style="margin-top:0;">Personal Identifiable Information (PII) Example</h2>
+
+        <label>Full name</label>
+        <input id="name" placeholder="Enter full name...">
+
+        <label>Email</label>
+        <input id="email" placeholder="example@mail.com">
+
+        <label>Phone</label>
+        <input id="phone" placeholder="+4412345678">
+
+        <label>Address</label>
+        <textarea id="address" rows="3" placeholder="Enter address..."></textarea>
+
+        <label>Security Number</label>
+        <input id="securityNumber" placeholder="Enter security number..."-->
+
+        <button class="blue" onclick="anonymise()">Anonymise (irreversible)</button>
+        <button class="green" onclick="pseudonymise()">Pseudonymise (reversible)</button>
+
+        <hr style="border-color:#334155; margin: 25px 0;">
+
+        <label>Passphrase (for pseudonymisation)</label>
+
+        <div class="pass-row">
+            <input id="passphrase" placeholder="Enter passphrase...">
+            <button class="grey" onclick="generatePass()">Generate</button>
+        </div>
+
+        <button class="green" onclick="recover()">Depseudonymise (recover)</button>
+        <button class="grey" onclick="clearOutputs()">Clear outputs</button>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="box">
+       <div style="color:white; font-size: 25px; font-weight:bold;">
+           By Mayowa Adewumi, CISSP, CISM, ISO LI, CEH, AWS-SAA
+       </div>
+
+        <h2>Outputs</h2>
+
+        <h3>Anonymised record</h3>
+        <pre id="anonOutput">—</pre>
+
+        <h3>Pseudonymised tokens (base64)</h3>
+        <pre id="pseudoOutput">—</pre>
+
+        <h3>Recovered (de-pseudonymised)</h3>
+        <pre id="recoverOutput">—</pre>
+    </div>
+
+</div>
+
+<script>
+/* UTIL FUNCTIONS */
+function toBase64(buf){ return btoa(String.fromCharCode(...new Uint8Array(buf))); }
+function fromBase64(str){ return Uint8Array.from(atob(str), c=>c.charCodeAt(0)); }
+
+async function sha256(text){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    return Array.from(new Uint8Array(buf)).map(x=>x.toString(16).padStart(2,"0")).join("");
+}
+
+async function deriveKey(pass, salt){
+    const keyMaterial = await crypto.subtle.importKey(
+        "raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]
+    );
+    return crypto.subtle.deriveKey(
+        { name:"PBKDF2", salt: new TextEncoder().encode(salt), iterations:120000, hash:"SHA-256" },
+        keyMaterial, { name:"AES-GCM", length:256 }, true, ["encrypt","decrypt"]
+    );
+}
+
+async function encryptAES(text, key){
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt(
+        {name:"AES-GCM", iv}, key, new TextEncoder().encode(text)
+    );
+    return { ciphertext:toBase64(encrypted), iv:toBase64(iv) };
+}
+
+async function decryptAES(ct, iv, key){
+    const decrypted = await crypto.subtle.decrypt(
+        {name:"AES-GCM", iv: fromBase64(iv)}, key, fromBase64(ct)
+    );
+    return new TextDecoder().decode(decrypted);
+}
+
+/* MAIN LOGIC */
+
+async function anonymise(){
+    const joined = (
+        name.value + email.value + phone.value + address.value + securityNumber.value
+    ).trim();
+
+    const hash = await sha256(joined);
+
+    anonOutput.textContent = JSON.stringify({
+        name:null,
+        email:null,
+        phone:null,
+        address:null,
+        securityNumber:null,
+        record_hash: hash
+    }, null, 2);
+}
+
+async function pseudonymise(){
+    if(!passphrase.value) return alert("Enter a passphrase.");
+
+    const data = {
+        name: name.value,
+        email: email.value,
+        phone: phone.value,
+        address: address.value,
+        securityNumber: securityNumber.value
+    };
+
+    const output = {};
+    const salt = "salt:" + (email.value || "default@example.com");
+    const key = await deriveKey(passphrase.value, salt);
+
+    for(const f in data){
+        const enc = await encryptAES(data[f], key);
+        output[f] = JSON.stringify(enc);
+    }
+    output["salt"] = salt;
+
+    pseudoOutput.textContent = JSON.stringify(output, null, 2);
+}
+
+async function recover(){
+    if(!passphrase.value) return alert("Enter the passphrase!");
+    if(pseudoOutput.textContent.trim() === "—") return alert("No pseudonymised data found.");
+
+    const tokens = JSON.parse(pseudoOutput.textContent);
+    const salt = tokens.salt;
+    const key = await deriveKey(passphrase.value, salt);
+
+    const recovered = {};
+
+    for(const f in tokens){
+        if(f === "salt") continue;
+        const {ciphertext, iv} = JSON.parse(tokens[f]);
+        recovered[f] = await decryptAES(ciphertext, iv, key);
+    }
+
+    recoverOutput.textContent = JSON.stringify(recovered, null, 2);
+}
+
+function generatePass(){
+    passphrase.value =
+        "orbit-" + Math.random().toString(36).slice(2,8) + "-" + Math.floor(Math.random()*900+100);
+}
+
+function clearOutputs(){
+    anonOutput.textContent = "—";
+    pseudoOutput.textContent = "—";
+    recoverOutput.textContent = "—";
+}
+</script>
+
+</body>
+</html>
+
