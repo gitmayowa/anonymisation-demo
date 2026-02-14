@@ -1,0 +1,33 @@
+{
+  "version": "2.5.0",
+  "summary": {
+    "title": "SAMM",
+    "owner": "SAMM Group",
+    "description": "Developing Threat Model for Payment App",
+    "id": 0
+  },
+  "detail": {
+    "contributors": [
+      {
+        "name": "DEVSECOP"
+      },
+      {
+        "name": "Engineering Team"
+      }
+    ],
+    "diagrams": [
+      {
+        "id": 0,
+        "title": "New STRIDE diagram",
+        "diagramType": "STRIDE",
+        "placeholder": "New STRIDE diagram description",
+        "thumbnail": "./public/content/images/thumbnail.stride.jpg",
+        "version": "2.5.0",
+        "cells": []
+      }
+    ],
+    "diagramTop": 1,
+    "reviewer": "Other Group",
+    "threatTop": 0
+  }
+}
